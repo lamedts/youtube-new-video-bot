@@ -3,3 +3,5 @@ venv
 client_secret.json
 state.json
 token.json
+*.egg-info
+build

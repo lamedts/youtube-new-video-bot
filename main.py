@@ -15,6 +15,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 
+import sys
+if not (3, 12) <= sys.version_info < (3, 13):
+    sys.exit("Python >=3.12 and <3.13 is required to run this bot.")
+
 # -----------------------------
 # Load .env
 # -----------------------------
@@ -90,8 +94,14 @@ def get_youtube_client():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
+            # For headless server: use manual OAuth flow
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
-            creds = flow.run_local_server(port=0, open_browser=False)
+            flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'  # For installed apps
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            print(f"Please visit this URL to authorize the application: {auth_url}")
+            auth_code = input("Enter the authorization code: ")
+            flow.fetch_token(code=auth_code)
+            creds = flow.credentials
         with open(TOKEN_FILE, "w") as f:
             f.write(creds.to_json())
     return build("youtube", "v3", credentials=creds)
