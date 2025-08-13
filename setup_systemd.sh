@@ -5,7 +5,7 @@
 # -----------------------------
 BOT_NAME="youtube-new-video-bot"
 USER_NAME=$(whoami)
-BOT_DIR="$HOME/youtube-bot"
+BOT_DIR="$HOME/youtube-new-video-bot"
 VENV_DIR="$BOT_DIR/venv"
 BOT_FILE="main.py"
 ENV_FILE="$BOT_DIR/.env"
