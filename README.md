@@ -17,10 +17,9 @@ A Python bot that monitors your YouTube subscriptions and sends notifications to
    pip install -r requirements.txt
    ```
 
-2. Create a `.env` file based on `.env.sample` with your configuration:
+2. Create a `.env` file with your configuration:
    - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
    - `TELEGRAM_CHAT_ID`: Your Telegram chat ID
-   - Other optional settings (see `.env.sample`)
 
 3. Set up YouTube API credentials:
    - Create a project in Google Cloud Console
@@ -32,7 +31,28 @@ A Python bot that monitors your YouTube subscriptions and sends notifications to
    python main.py
    ```
 
-On first run, you'll be prompted to authenticate with Google to access your YouTube subscriptions.
+On first run, you'll get an authorization URL to visit in your browser. Copy the code and paste it back into the terminal.
+
+## Running as a Service
+
+Use the provided script to set up systemd service:
+```bash
+chmod +x setup_systemd.sh
+./setup_systemd.sh
+```
+
+To update environment variables after starting the service:
+1. Edit your `.env` file
+2. Restart the service: `sudo systemctl restart youtube-new-video-bot.service`
+
+To view logs:
+```bash
+# View recent logs
+sudo journalctl -u youtube-new-video-bot.service
+
+# Follow logs in real-time
+sudo journalctl -u youtube-new-video-bot.service -f
+```
 
 ## Configuration
 

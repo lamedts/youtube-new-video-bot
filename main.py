@@ -269,14 +269,30 @@ def main():
     # Initialize YouTube client for startup info
     yt = get_youtube_client()
     info = get_my_channel_info(yt)
+
+    # Get subscription count
+    try:
+        subs = fetch_all_subscriptions(yt)
+        sub_count = len(subs)
+    except:
+        sub_count = "Unknown"
+
     if info:
         msg = f"🚀 YouTube → Telegram bot 'youtube-new-video-bot' has started.\n"
         msg += f"User: *{info['title']}*\n"
-        msg += f"Channel ID: `{info['channel_id']}`\n"
-        msg += f"Subscribers: {info['subs_count']}\n"
-        msg += f"Videos: {info['video_count']}"
+        msg += f"Subscriptions: {sub_count}\n\n"
+        msg += f"⚙️ *Bot Configuration*\n"
+        msg += f"Video Poll: {VIDEO_POLL_SECONDS}s\n"
+        msg += f"Subscription Sync: {SUBS_REFRESH_MINUTES}min\n"
+        msg += f"Init Mode: {INIT_MODE}"
     else:
-        msg = "🚀 YouTube → Telegram bot 'youtube-new-video-bot' has started.\nCould not fetch user info."
+        msg = f"🚀 YouTube → Telegram bot 'youtube-new-video-bot' has started.\n"
+        msg += f"Could not fetch user info.\n"
+        msg += f"Subscriptions: {sub_count}\n\n"
+        msg += f"⚙️ *Bot Configuration*\n"
+        msg += f"Video Poll: {VIDEO_POLL_SECONDS}s\n"
+        msg += f"Subscription Sync: {SUBS_REFRESH_MINUTES}min\n"
+        msg += f"Init Mode: {INIT_MODE}"
 
     tg_send_message(msg)
 
