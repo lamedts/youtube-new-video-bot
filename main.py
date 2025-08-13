@@ -80,7 +80,7 @@ def tg_send_photo(photo_url: str, caption: str):
         print("Telegram send_photo exception:", e)
 
 # -----------------------------
-# YouTube OAuth
+# YouTube OAuth (headless)
 # -----------------------------
 def get_youtube_client():
     creds = None
@@ -91,10 +91,31 @@ def get_youtube_client():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
+            # Use console flow for headless server
+            creds = flow.run_console()
         with open(TOKEN_FILE, "w") as f:
             f.write(creds.to_json())
     return build("youtube", "v3", credentials=creds)
+
+# -----------------------------
+# Get authenticated user info
+# -----------------------------
+def get_my_channel_info(youtube):
+    try:
+        resp = youtube.channels().list(part="snippet,statistics", mine=True).execute()
+        items = resp.get("items", [])
+        if not items:
+            return None
+        ch = items[0]
+        return {
+            "title": ch["snippet"]["title"],
+            "subs_count": ch["statistics"].get("subscriberCount", "N/A"),
+            "video_count": ch["statistics"].get("videoCount", "N/A"),
+            "channel_id": ch["id"]
+        }
+    except Exception as e:
+        print("[user_info] Error:", e)
+        return None
 
 # -----------------------------
 # Subscriptions sync
@@ -236,8 +257,19 @@ def main():
         print("ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set.")
         return
 
-    # ---------- Startup notification ----------
-    tg_send_message("🚀 YouTube → Telegram bot has started.")
+    # Initialize YouTube client for startup info
+    yt = get_youtube_client()
+    info = get_my_channel_info(yt)
+    if info:
+        msg = f"🚀 YouTube → Telegram bot 'youtube-new-video-bot' has started.\n"
+        msg += f"User: *{info['title']}*\n"
+        msg += f"Channel ID: `{info['channel_id']}`\n"
+        msg += f"Subscribers: {info['subs_count']}\n"
+        msg += f"Videos: {info['video_count']}"
+    else:
+        msg = "🚀 YouTube → Telegram bot 'youtube-new-video-bot' has started.\nCould not fetch user info."
+
+    tg_send_message(msg)
 
     print("YouTube → Telegram notifier starting…")
     print(f"INIT_MODE={INIT_MODE}, VIDEO_POLL_SECONDS={VIDEO_POLL_SECONDS}, SUBS_REFRESH_MINUTES={SUBS_REFRESH_MINUTES}")
