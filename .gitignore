@@ -5,3 +5,6 @@ state.json
 token.json
 *.egg-info
 build
+firebase-service-account.json
+youtube-client-secret.json
+youtube-token.json
