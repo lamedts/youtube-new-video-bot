@@ -71,9 +71,9 @@ class YouTubeService:
             print(f"[youtube] Error getting user info: {e}")
             return None
     
-    def fetch_all_subscriptions(self) -> List[Tuple[str, str]]:
-        """Fetch all user subscriptions."""
-        items: List[Tuple[str, str]] = []
+    def fetch_all_subscriptions(self) -> List[Tuple[str, str, Optional[str]]]:
+        """Fetch all user subscriptions with thumbnails."""
+        items: List[Tuple[str, str, Optional[str]]] = []
         page_token = None
         youtube = self._get_authenticated_client()
         
@@ -92,8 +92,18 @@ class YouTubeService:
                     channel_id = resource.get("channelId")
                     title = snippet.get("title", "")
                     
+                    # Get thumbnail URL (prefer medium quality)
+                    thumbnails = snippet.get("thumbnails", {})
+                    thumbnail_url = None
+                    if thumbnails:
+                        # Try different quality levels
+                        for quality in ["medium", "high", "default"]:
+                            if quality in thumbnails:
+                                thumbnail_url = thumbnails[quality].get("url")
+                                break
+                    
                     if channel_id:
-                        items.append((channel_id, title))
+                        items.append((channel_id, title, thumbnail_url))
                 
                 page_token = resp.get("nextPageToken")
                 if not page_token:

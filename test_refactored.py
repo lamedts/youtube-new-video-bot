@@ -54,36 +54,43 @@ def test_models():
     
     assert channel.rss_url == "https://www.youtube.com/feeds/videos.xml?channel_id=UC123"
     assert channel.notify == True  # Default value
+    assert channel.thumbnail is None  # Default value
     
     channel_dict = channel.to_dict()
     assert channel_dict['channel_id'] == "UC123"
     assert channel_dict['title'] == "Test Channel"
     assert channel_dict['notify'] == True
+    assert channel_dict['thumbnail'] is None
     
-    # Test Channel with notify=False
-    channel_no_notify = Channel(
+    # Test Channel with thumbnail and notify=False
+    channel_with_thumbnail = Channel(
         channel_id="UC456",
         title="Silent Channel",
+        thumbnail="https://example.com/thumb.jpg",
         notify=False
     )
-    assert channel_no_notify.notify == False
+    assert channel_with_thumbnail.notify == False
+    assert channel_with_thumbnail.thumbnail == "https://example.com/thumb.jpg"
     
-    # Test from_state_dict with notify field
+    # Test from_state_dict with notify and thumbnail fields
     state_data = {
         "title": "Test Channel",
+        "thumbnail": "https://example.com/state_thumb.jpg",
         "last_video_id": "video123",
         "notify": False
     }
     channel_from_state = Channel.from_state_dict("UC789", state_data)
     assert channel_from_state.notify == False
+    assert channel_from_state.thumbnail == "https://example.com/state_thumb.jpg"
     
-    # Test from_state_dict without notify field (backward compatibility)
+    # Test from_state_dict without notify/thumbnail fields (backward compatibility)
     state_data_legacy = {
         "title": "Legacy Channel",
         "last_video_id": "video456"
     }
     channel_legacy = Channel.from_state_dict("UC000", state_data_legacy)
     assert channel_legacy.notify == True  # Should default to True
+    assert channel_legacy.thumbnail is None  # Should default to None
     
     # Test Video model
     video = Video(
@@ -94,9 +101,26 @@ def test_models():
         link="https://youtube.com/watch?v=video123"
     )
     
+    assert video.view_count is None  # Default value
+    
     video_dict = video.to_dict()
     assert video_dict['video_id'] == "video123"
     assert video_dict['title'] == "Test Video"
+    assert video_dict['view_count'] is None
+    
+    # Test Video with view_count
+    video_with_views = Video(
+        video_id="video456",
+        title="Popular Video",
+        channel_id="UC123",
+        channel_title="Test Channel",
+        link="https://youtube.com/watch?v=video456",
+        view_count=1000000
+    )
+    
+    assert video_with_views.view_count == 1000000
+    video_with_views_dict = video_with_views.to_dict()
+    assert video_with_views_dict['view_count'] == 1000000
     
     print("✅ Models test passed")
 
