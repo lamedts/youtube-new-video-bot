@@ -2,6 +2,7 @@
 
 import os
 from typing import Optional, Protocol
+from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -137,12 +138,23 @@ class FirebaseService:
 
             for doc in docs:
                 data = doc.to_dict()
+                
+                # Parse last_upload_at if it exists
+                last_upload_at = None
+                last_upload_str = data.get('last_upload_at')
+                if last_upload_str:
+                    try:
+                        last_upload_at = datetime.fromisoformat(last_upload_str)
+                    except (ValueError, TypeError):
+                        last_upload_at = None
+                
                 channel = Channel(
                     channel_id=doc.id,
                     title=data.get('title', doc.id),
                     thumbnail=data.get('thumbnail'),
                     last_video_id=data.get('last_video_id', ''),
-                    notify=data.get('notify', True)  # Default to True for backward compatibility
+                    notify=data.get('notify', True),  # Default to True for backward compatibility
+                    last_upload_at=last_upload_at
                 )
                 channels.append(channel)
 
@@ -162,12 +174,23 @@ class FirebaseService:
                 raise KeyError(f"Channel {channel_id} not found")
 
             data = doc.to_dict()
+            
+            # Parse last_upload_at if it exists
+            last_upload_at = None
+            last_upload_str = data.get('last_upload_at')
+            if last_upload_str:
+                try:
+                    last_upload_at = datetime.fromisoformat(last_upload_str)
+                except (ValueError, TypeError):
+                    last_upload_at = None
+            
             return Channel(
                 channel_id=channel_id,
                 title=data.get('title', channel_id),
                 thumbnail=data.get('thumbnail'),
                 last_video_id=data.get('last_video_id', ''),
-                notify=data.get('notify', True)  # Default to True for backward compatibility
+                notify=data.get('notify', True),  # Default to True for backward compatibility
+                last_upload_at=last_upload_at
             )
         except Exception as e:
             print(f"[firebase] Error getting channel {channel_id}: {e}")

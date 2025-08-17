@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Optional
+from datetime import datetime
 
 
 @dataclass
@@ -13,6 +14,7 @@ class Channel:
     thumbnail: Optional[str] = None
     last_video_id: str = ""
     notify: bool = True  # Local preference for notifications
+    last_upload_at: Optional[datetime] = None
 
     @property
     def link(self) -> str:
@@ -32,6 +34,7 @@ class Channel:
             "last_video_id": self.last_video_id,
             "notify": self.notify,
             'thumbnail': self.thumbnail,
+            "last_upload_at": self.last_upload_at.isoformat() if self.last_upload_at else None,
             "link": self.link,
             "rss_url": self.rss_url
         }
@@ -43,6 +46,7 @@ class Channel:
             "thumbnail": self.thumbnail,
             "last_video_id": self.last_video_id,
             "notify": self.notify,
+            "last_upload_at": self.last_upload_at.isoformat() if self.last_upload_at else None,
             "link": self.link,
             "rss_url": self.rss_url
         }
@@ -50,12 +54,21 @@ class Channel:
     @classmethod
     def from_state_dict(cls, channel_id: str, data: dict) -> "Channel":
         """Create Channel from state dictionary."""
+        last_upload_str = data.get("last_upload_at")
+        last_upload_at = None
+        if last_upload_str:
+            try:
+                last_upload_at = datetime.fromisoformat(last_upload_str)
+            except ValueError:
+                last_upload_at = None
+        
         return cls(
             channel_id=channel_id,
             title=data.get("title", channel_id),
             thumbnail=data.get("thumbnail"),
             last_video_id=data.get("last_video_id", ""),
-            notify=data.get("notify", True)  # Default to True for backward compatibility
+            notify=data.get("notify", True),  # Default to True for backward compatibility
+            last_upload_at=last_upload_at
         )
 
 

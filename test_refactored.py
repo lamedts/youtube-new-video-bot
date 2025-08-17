@@ -25,7 +25,7 @@ def test_config():
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHAT_ID': 'test_chat_id',
         'VIDEO_POLL_SECONDS': '300',
-        'SUBS_REFRESH_MINUTES': '720',
+        'SUBS_REFRESH_SECONDS': '43200',
         'YOUTUBE_CLIENT_SECRET_FILE': 'test-client-secret.json',
         'YOUTUBE_TOKEN_FILE': 'test-token.json'
     }):
@@ -33,7 +33,7 @@ def test_config():
         assert config.telegram_bot_token == 'test_token'
         assert config.telegram_chat_id == 'test_chat_id'
         assert config.video_poll_seconds == 300
-        assert config.subs_refresh_minutes == 720
+        assert config.subs_refresh_seconds == 43200
         assert config.youtube_client_secret_file == 'test-client-secret.json'
         assert config.youtube_token_file == 'test-token.json'
         assert config.firebase_credentials_file == 'firebase-service-account.json'
@@ -55,12 +55,16 @@ def test_models():
     assert channel.rss_url == "https://www.youtube.com/feeds/videos.xml?channel_id=UC123"
     assert channel.notify == True  # Default value
     assert channel.thumbnail is None  # Default value
+    assert channel.last_upload_at is None  # Default value
+    assert channel.link == "https://www.youtube.com/channel/UC123"
     
     channel_dict = channel.to_dict()
     assert channel_dict['channel_id'] == "UC123"
     assert channel_dict['title'] == "Test Channel"
     assert channel_dict['notify'] == True
     assert channel_dict['thumbnail'] is None
+    assert channel_dict['last_upload_at'] is None
+    assert channel_dict['link'] == "https://www.youtube.com/channel/UC123"
     
     # Test Channel with thumbnail and notify=False
     channel_with_thumbnail = Channel(

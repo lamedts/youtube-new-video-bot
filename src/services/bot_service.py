@@ -2,6 +2,7 @@
 
 import time
 import threading
+from datetime import datetime, timedelta
 
 from ..config.settings import BotConfig
 from ..models.channel import Channel
@@ -44,7 +45,7 @@ class YouTubeBotService:
         print("YouTube → Telegram notifier starting…")
         print(f"INIT_MODE={self._config.init_mode}, "
               f"VIDEO_POLL_SECONDS={self._config.video_poll_seconds}, "
-              f"SUBS_REFRESH_MINUTES={self._config.subs_refresh_minutes}")
+              f"SUBS_REFRESH_SECONDS={self._config.subs_refresh_seconds}")
 
         # Send startup notification
         self._send_startup_notification()
@@ -75,7 +76,7 @@ class YouTubeBotService:
 
         config_info = (f"⚙️ *Bot Configuration*\n"
                       f"Video Poll: {self._config.video_poll_seconds}s\n"
-                      f"Subscription Sync: {self._config.subs_refresh_minutes}min\n"
+                      f"Subscription Sync: {self._config.subs_refresh_seconds}s\n"
                       f"Init Mode: {self._config.init_mode}")
 
         user_title = user_info.title if user_info else None
@@ -86,13 +87,17 @@ class YouTubeBotService:
         self._sync_subscriptions()
 
         while True:
-            time.sleep(self._config.subs_refresh_minutes * 60)
+            next_sync = datetime.now() + timedelta(seconds=self._config.subs_refresh_seconds)
+            print(f"[subs] Next subscription sync scheduled at: {next_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+            time.sleep(self._config.subs_refresh_seconds)
             self._sync_subscriptions()
 
     def _run_video_poller(self) -> None:
         """Background task to poll for new videos."""
         while True:
             self._poll_videos_once()
+            next_poll = datetime.now() + timedelta(seconds=self._config.video_poll_seconds)
+            print(f"[rss] Next video poll scheduled at: {next_poll.strftime('%Y-%m-%d %H:%M:%S')}")
             time.sleep(self._config.video_poll_seconds)
 
     def _sync_subscriptions(self) -> None:
@@ -129,7 +134,7 @@ class YouTubeBotService:
                         channel.title, channel.channel_id
                     )
 
-            print(f"[subs] Added {len(newly_added)} new channels.")
+            print(f"[subs] Subscription sync completed. Added {len(newly_added)} new channels.")
 
         except Exception as e:
             print(f"[subs] Error during sync: {e}")
@@ -169,13 +174,33 @@ class YouTubeBotService:
             else:
                 print(f"[rss] Found {len(new_videos)} new videos but notifications disabled for all channels.")
         else:
-            print("[rss] No new videos found.")
+            print("[rss] Video polling completed. No new videos found.")
 
     def _process_new_video(self, channel: Channel, video: Video) -> None:
         """Process a new video discovery."""
+        from datetime import datetime
+        
         # Save to Firebase
         self._firebase_service.save_video(video)
         self._firebase_service.update_channel_last_video(channel.channel_id, video.video_id)
+        
+        # Update the channel's last upload time based on video's published_at
+        if video.published_at:
+            try:
+                upload_time = datetime.fromisoformat(video.published_at.replace('Z', '+00:00'))
+                # Update channel with new last_upload_at
+                updated_channel = Channel(
+                    channel_id=channel.channel_id,
+                    title=channel.title,
+                    thumbnail=channel.thumbnail,
+                    last_video_id=video.video_id,
+                    notify=channel.notify,
+                    last_upload_at=upload_time
+                )
+                self._firebase_service.save_subscription(updated_channel)
+            except (ValueError, TypeError):
+                # If we can't parse the date, just update without last_upload_at
+                pass
 
     def toggle_channel_notifications(self, channel_id: str) -> bool:
         """Toggle notification preference for a channel."""
