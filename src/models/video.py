@@ -16,6 +16,7 @@ class Video:
     link: str
     thumbnail: Optional[str] = None
     published_at: Optional[str] = None
+    view_count: Optional[int] = None
     
     def to_dict(self) -> dict:
         """Convert to dictionary for Firebase storage."""
@@ -26,7 +27,8 @@ class Video:
             'channel_title': self.channel_title,
             'link': self.link,
             'thumbnail': self.thumbnail,
-            'published_at': self.published_at
+            'published_at': self.published_at,
+            'view_count': self.view_count
         }
     
     @classmethod
@@ -53,5 +55,6 @@ class Video:
             channel_title=channel_title,
             link=link,
             thumbnail=thumbnail,
-            published_at=published_at
+            published_at=published_at,
+            view_count=None  # RSS feeds don't provide view count
         )
