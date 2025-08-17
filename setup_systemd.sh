@@ -26,8 +26,9 @@ Type=simple
 User=$USER_NAME
 WorkingDirectory=$BOT_DIR
 Environment=\"PATH=$VENV_DIR/bin\"
+Environment=\"PYTHONUNBUFFERED=1\"
 EnvironmentFile=$ENV_FILE
-ExecStart=$VENV_DIR/bin/python $BOT_DIR/$BOT_FILE
+ExecStart=$VENV_DIR/bin/python -u $BOT_DIR/$BOT_FILE
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -50,4 +51,10 @@ echo "Starting the service..."
 sudo systemctl start $BOT_NAME.service
 
 echo "Done!"
-echo "Check status with: sudo systemctl status $BOT_NAME.service"
+echo ""
+echo "Useful commands:"
+echo "  Check status: sudo systemctl status $BOT_NAME.service"
+echo "  View logs:    sudo journalctl -u $BOT_NAME.service -f"
+echo "  Stop service: sudo systemctl stop $BOT_NAME.service"
+echo "  Start service: sudo systemctl start $BOT_NAME.service"
+echo "  Restart service: sudo systemctl restart $BOT_NAME.service"
