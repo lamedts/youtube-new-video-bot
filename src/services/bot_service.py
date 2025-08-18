@@ -2,7 +2,8 @@
 
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
+from croniter import croniter
 
 from ..config.settings import BotConfig
 from ..models.channel import Channel
@@ -44,17 +45,17 @@ class YouTubeBotService:
         """Start the bot."""
         print("YouTube → Telegram notifier starting…")
         print(f"INIT_MODE={self._config.init_mode}, "
-              f"VIDEO_POLL_SECONDS={self._config.video_poll_seconds}, "
-              f"SUBS_REFRESH_SECONDS={self._config.subs_refresh_seconds}")
+              f"VIDEO_CRON={self._config.video_cron}, "
+              f"CHANNEL_CRON={self._config.channel_cron}")
 
         # Send startup notification
         self._send_startup_notification()
 
         # Start background tasks
-        subscription_thread = threading.Thread(target=self._run_subscription_refresher, daemon=True)
-        video_thread = threading.Thread(target=self._run_video_poller, daemon=True)
-
-        subscription_thread.start()
+        channel_thread = threading.Thread(target=self._run_channel_sync, daemon=True)
+        video_thread = threading.Thread(target=self._run_video_poll, daemon=True)
+        
+        channel_thread.start()
         video_thread.start()
 
         # Keep main thread alive
@@ -75,48 +76,87 @@ class YouTubeBotService:
             sub_count = "Unknown"
 
         config_info = (f"⚙️ *Bot Configuration*\n"
-                      f"Video Poll: {self._config.video_poll_seconds}s\n"
-                      f"Subscription Sync: {self._config.subs_refresh_seconds}s\n"
+                      f"Video Poll Cron: `{self._config.video_cron}`\n"
+                      f"Channel Sync Cron: `{self._config.channel_cron}`\n"
                       f"Init Mode: {self._config.init_mode}")
 
         user_title = user_info.title if user_info else None
         self._telegram_service.send_startup_message(user_title, sub_count, config_info)
 
-    def _run_subscription_refresher(self) -> None:
-        """Background task to refresh subscriptions."""
+    def _run_channel_sync(self) -> None:
+        """Background task to sync channel subscriptions.
+        
+        Uses YouTube Data API v3 - CONSUMES API QUOTA.
+        Keep frequency low to minimize costs.
+        """
+        # Initial sync on startup
         self._sync_subscriptions()
-
+        
+        cron = croniter(self._config.channel_cron, datetime.now())
+        
         while True:
-            next_sync = datetime.now() + timedelta(seconds=self._config.subs_refresh_seconds)
-            print(f"[subs] Next subscription sync scheduled at: {next_sync.strftime('%Y-%m-%d %H:%M:%S')}")
-            time.sleep(self._config.subs_refresh_seconds)
+            next_sync = cron.get_next(datetime)
+            print(f"[channel] Next channel sync scheduled at: {next_sync.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Calculate sleep time until next execution
+            sleep_seconds = (next_sync - datetime.now()).total_seconds()
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+            
             self._sync_subscriptions()
 
-    def _run_video_poller(self) -> None:
-        """Background task to poll for new videos."""
+    def _run_video_poll(self) -> None:
+        """Background task to poll for new videos.
+        
+        Uses RSS feeds - NO API QUOTA COST.
+        Can run frequently without cost concerns.
+        """
+        cron = croniter(self._config.video_cron, datetime.now())
+        
         while True:
+            next_poll = cron.get_next(datetime)
+            print(f"[video] Next video poll scheduled at: {next_poll.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Calculate sleep time until next execution
+            sleep_seconds = (next_poll - datetime.now()).total_seconds()
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+            
             self._poll_videos_once()
-            next_poll = datetime.now() + timedelta(seconds=self._config.video_poll_seconds)
-            print(f"[rss] Next video poll scheduled at: {next_poll.strftime('%Y-%m-%d %H:%M:%S')}")
-            time.sleep(self._config.video_poll_seconds)
 
     def _sync_subscriptions(self) -> None:
-        """Sync YouTube subscriptions."""
-        print("[subs] Syncing subscriptions…")
+        """Sync YouTube subscriptions using YouTube Data API v3.
+        
+        WARNING: This method consumes API quota (1 unit per subscription).
+        """
+        print("[subs] Syncing subscriptions… (using YouTube Data API - costs quota)")
 
         try:
             subscription_tuples = self._youtube_service.fetch_all_subscriptions()
             newly_added = []
 
             for channel_id, title, thumbnail in subscription_tuples:
-                channel = Channel(
-                    channel_id=channel_id,
-                    title=title or channel_id,
-                    thumbnail=thumbnail
-                )
-
                 # Check if channel already exists in Firebase
                 is_new = not self._firebase_service.channel_exists(channel_id)
+                
+                if is_new:
+                    # New channel - create with default notify=True
+                    channel = Channel(
+                        channel_id=channel_id,
+                        title=title or channel_id,
+                        thumbnail=thumbnail
+                    )
+                else:
+                    # Existing channel - get current settings and preserve notify preference
+                    existing_channel = self._firebase_service.get_channel(channel_id)
+                    channel = Channel(
+                        channel_id=channel_id,
+                        title=title or channel_id,
+                        thumbnail=thumbnail,
+                        last_video_id=existing_channel.last_video_id,
+                        notify=existing_channel.notify,  # Preserve existing notify setting
+                        last_upload_at=existing_channel.last_upload_at
+                    )
 
                 # Save to Firebase (will merge if exists)
                 self._firebase_service.save_subscription(channel)
@@ -140,8 +180,11 @@ class YouTubeBotService:
             print(f"[subs] Error during sync: {e}")
 
     def _poll_videos_once(self) -> None:
-        """Poll for new videos from all subscribed channels."""
-        print("[rss] polling new videos")
+        """Poll for new videos from all subscribed channels using RSS feeds.
+        
+        Uses RSS feeds - NO API quota cost.
+        """
+        print("[rss] polling new videos (using RSS - free)")
         new_videos = []
         channels = self._firebase_service.get_all_channels()
 
