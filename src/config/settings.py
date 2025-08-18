@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 from dotenv import load_dotenv
+from croniter import croniter
 
 load_dotenv()
 
@@ -25,8 +26,7 @@ class BotConfig:
     youtube_scopes: list[str]
     
     # Timing configuration
-    subs_refresh_seconds: int
-    video_poll_seconds: int
+    poll_cron: str
     init_mode: bool
     
     @classmethod
@@ -45,14 +45,13 @@ class BotConfig:
             youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", "youtube-token.json"),
             firebase_credentials_file=os.getenv("FIREBASE_CREDENTIALS_FILE", "firebase-service-account.json"),
             youtube_scopes=["https://www.googleapis.com/auth/youtube.readonly"],
-            subs_refresh_seconds=int(os.getenv("SUBS_REFRESH_SECONDS", "86400")),
-            video_poll_seconds=int(os.getenv("VIDEO_POLL_SECONDS", "600")),
+            poll_cron=os.getenv("POLL_CRON", "*/10 * * * *"),    # Every 10 minutes
             init_mode=os.getenv("INIT_MODE", "false").lower() in ("1", "true", "yes", "y")
         )
     
     def validate(self) -> None:
         """Validate configuration values."""
-        if self.subs_refresh_seconds <= 0:
-            raise ValueError("SUBS_REFRESH_SECONDS must be positive")
-        if self.video_poll_seconds <= 0:
-            raise ValueError("VIDEO_POLL_SECONDS must be positive")
+        try:
+            croniter(self.poll_cron)
+        except ValueError as e:
+            raise ValueError(f"Invalid POLL_CRON expression: {e}")

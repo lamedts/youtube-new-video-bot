@@ -79,8 +79,7 @@ sudo journalctl -u youtube-new-video-bot.service -f
 
 ## Configuration
 
-- `SUBS_REFRESH_MINUTES`: How often to sync subscriptions (default: 1440 minutes / 24 hours)
-- `VIDEO_POLL_SECONDS`: How often to check for new videos (default: 600 seconds / 10 minutes)
+- `POLL_CRON`: Cron expression for how often to sync subscriptions and check for new videos (default: "*/10 * * * *" - every 10 minutes)
 - `INIT_MODE`: Set to `true` to skip notifications on first run (default: false)
 
 ## Notification Preferences

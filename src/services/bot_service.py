@@ -2,7 +2,8 @@
 
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
+from croniter import croniter
 
 from ..config.settings import BotConfig
 from ..models.channel import Channel
@@ -44,18 +45,14 @@ class YouTubeBotService:
         """Start the bot."""
         print("YouTube → Telegram notifier starting…")
         print(f"INIT_MODE={self._config.init_mode}, "
-              f"VIDEO_POLL_SECONDS={self._config.video_poll_seconds}, "
-              f"SUBS_REFRESH_SECONDS={self._config.subs_refresh_seconds}")
+              f"POLL_CRON={self._config.poll_cron}")
 
         # Send startup notification
         self._send_startup_notification()
 
-        # Start background tasks
-        subscription_thread = threading.Thread(target=self._run_subscription_refresher, daemon=True)
-        video_thread = threading.Thread(target=self._run_video_poller, daemon=True)
-
-        subscription_thread.start()
-        video_thread.start()
+        # Start background task
+        poll_thread = threading.Thread(target=self._run_unified_poller, daemon=True)
+        poll_thread.start()
 
         # Keep main thread alive
         try:
@@ -75,30 +72,31 @@ class YouTubeBotService:
             sub_count = "Unknown"
 
         config_info = (f"⚙️ *Bot Configuration*\n"
-                      f"Video Poll: {self._config.video_poll_seconds}s\n"
-                      f"Subscription Sync: {self._config.subs_refresh_seconds}s\n"
+                      f"Poll Schedule: {self._config.poll_cron}\n"
                       f"Init Mode: {self._config.init_mode}")
 
         user_title = user_info.title if user_info else None
         self._telegram_service.send_startup_message(user_title, sub_count, config_info)
 
-    def _run_subscription_refresher(self) -> None:
-        """Background task to refresh subscriptions."""
+    def _run_unified_poller(self) -> None:
+        """Background task to sync subscriptions and poll for videos."""
+        # Initial sync on startup
         self._sync_subscriptions()
-
+        
+        cron = croniter(self._config.poll_cron, datetime.now())
+        
         while True:
-            next_sync = datetime.now() + timedelta(seconds=self._config.subs_refresh_seconds)
-            print(f"[subs] Next subscription sync scheduled at: {next_sync.strftime('%Y-%m-%d %H:%M:%S')}")
-            time.sleep(self._config.subs_refresh_seconds)
+            # Both subscription sync and video polling happen together
             self._sync_subscriptions()
-
-    def _run_video_poller(self) -> None:
-        """Background task to poll for new videos."""
-        while True:
             self._poll_videos_once()
-            next_poll = datetime.now() + timedelta(seconds=self._config.video_poll_seconds)
-            print(f"[rss] Next video poll scheduled at: {next_poll.strftime('%Y-%m-%d %H:%M:%S')}")
-            time.sleep(self._config.video_poll_seconds)
+            
+            next_poll = cron.get_next(datetime)
+            print(f"[poll] Next sync & poll scheduled at: {next_poll.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Calculate sleep time until next execution
+            sleep_seconds = (next_poll - datetime.now()).total_seconds()
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
 
     def _sync_subscriptions(self) -> None:
         """Sync YouTube subscriptions."""

@@ -24,16 +24,14 @@ def test_config():
     with patch.dict(os.environ, {
         'TELEGRAM_BOT_TOKEN': 'test_token',
         'TELEGRAM_CHAT_ID': 'test_chat_id',
-        'VIDEO_POLL_SECONDS': '300',
-        'SUBS_REFRESH_SECONDS': '43200',
+        'POLL_CRON': '*/5 * * * *',
         'YOUTUBE_CLIENT_SECRET_FILE': 'test-client-secret.json',
         'YOUTUBE_TOKEN_FILE': 'test-token.json'
     }):
         config = BotConfig.from_env()
         assert config.telegram_bot_token == 'test_token'
         assert config.telegram_chat_id == 'test_chat_id'
-        assert config.video_poll_seconds == 300
-        assert config.subs_refresh_seconds == 43200
+        assert config.poll_cron == '*/5 * * * *'
         assert config.youtube_client_secret_file == 'test-client-secret.json'
         assert config.youtube_token_file == 'test-token.json'
         assert config.firebase_credentials_file == 'firebase-service-account.json'
