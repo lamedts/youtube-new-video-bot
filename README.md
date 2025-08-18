@@ -79,8 +79,28 @@ sudo journalctl -u youtube-new-video-bot.service -f
 
 ## Configuration
 
-- `POLL_CRON`: Cron expression for how often to sync subscriptions and check for new videos (default: "*/10 * * * *" - every 10 minutes)
+- `VIDEO_CRON`: Cron expression for how often to check for new videos via RSS feed (default: "0 * * * *" - every hour) - **FREE**
+- `CHANNEL_CRON`: Cron expression for how often to sync channel subscriptions via YouTube Data API (default: "0 0 * * *" - daily at midnight) - **COSTS API QUOTA**
 - `INIT_MODE`: Set to `true` to skip notifications on first run (default: false)
+
+## API Usage & Costs
+
+This bot uses two different methods to gather information:
+
+### Video Polling (FREE)
+- Uses RSS feeds to check for new videos
+- No API quota consumption
+- Can run frequently without cost concerns
+- Controlled by `VIDEO_CRON`
+
+### Channel Syncing (COSTS QUOTA)
+- Uses YouTube Data API v3 to sync subscription list
+- Consumes API quota (1 unit per subscription fetched)
+- Should run less frequently to conserve quota
+- Default: daily at midnight via `CHANNEL_CRON`
+- YouTube Data API provides 10,000 units/day for free
+
+**Recommendation**: Keep `CHANNEL_CRON` infrequent (daily or less) to minimize API costs, but `VIDEO_CRON` can run as often as needed since RSS is free.
 
 ## Notification Preferences
 

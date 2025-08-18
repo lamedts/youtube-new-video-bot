@@ -26,7 +26,8 @@ class BotConfig:
     youtube_scopes: list[str]
     
     # Timing configuration
-    poll_cron: str
+    video_cron: str
+    channel_cron: str
     init_mode: bool
     
     @classmethod
@@ -45,13 +46,19 @@ class BotConfig:
             youtube_token_file=os.getenv("YOUTUBE_TOKEN_FILE", "youtube-token.json"),
             firebase_credentials_file=os.getenv("FIREBASE_CREDENTIALS_FILE", "firebase-service-account.json"),
             youtube_scopes=["https://www.googleapis.com/auth/youtube.readonly"],
-            poll_cron=os.getenv("POLL_CRON", "*/10 * * * *"),    # Every 10 minutes
+            video_cron=os.getenv("VIDEO_CRON", "0 * * * *"),        # Every hour
+            channel_cron=os.getenv("CHANNEL_CRON", "0 0 * * *"),   # Daily at midnight
             init_mode=os.getenv("INIT_MODE", "false").lower() in ("1", "true", "yes", "y")
         )
     
     def validate(self) -> None:
         """Validate configuration values."""
         try:
-            croniter(self.poll_cron)
+            croniter(self.video_cron)
         except ValueError as e:
-            raise ValueError(f"Invalid POLL_CRON expression: {e}")
+            raise ValueError(f"Invalid VIDEO_CRON expression: {e}")
+        
+        try:
+            croniter(self.channel_cron)
+        except ValueError as e:
+            raise ValueError(f"Invalid CHANNEL_CRON expression: {e}")
