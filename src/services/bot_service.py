@@ -76,8 +76,8 @@ class YouTubeBotService:
             sub_count = "Unknown"
 
         config_info = (f"⚙️ *Bot Configuration*\n"
-                      f"Video Poll: {self._config.video_cron}\n"
-                      f"Channel Sync: {self._config.channel_cron}\n"
+                      f"Video Poll Cron: `{self._config.video_cron}`\n"
+                      f"Channel Sync Cron: `{self._config.channel_cron}`\n"
                       f"Init Mode: {self._config.init_mode}")
 
         user_title = user_info.title if user_info else None
