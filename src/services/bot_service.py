@@ -187,8 +187,15 @@ class YouTubeBotService:
         print("[rss] polling new videos (using RSS - free)")
         new_videos = []
         channels = self._firebase_service.get_all_channels()
+        
+        # Filter channels to only poll those with notifications enabled
+        channels_to_poll = [channel for channel in channels if channel.notify]
+        channels_skipped = len(channels) - len(channels_to_poll)
+        
+        if channels_skipped > 0:
+            print(f"[rss] Skipping {channels_skipped} channels with notifications disabled")
 
-        for channel in channels:
+        for channel in channels_to_poll:
             latest_video = self._rss_service.get_latest_video(channel)
 
             if not latest_video or not latest_video.video_id:
@@ -207,15 +214,9 @@ class YouTubeBotService:
 
         # Send summary notification for all new videos
         if new_videos:
-            # Filter videos for channels with notifications enabled
-            notifiable_videos = [video for video in new_videos
-                               if self._should_notify_for_channel(video.channel_id)]
-
-            if notifiable_videos:
-                self._telegram_service.send_video_summary_notification(notifiable_videos)
-                print(f"[rss] Sent summary notification for {len(notifiable_videos)} new videos.")
-            else:
-                print(f"[rss] Found {len(new_videos)} new videos but notifications disabled for all channels.")
+            # All videos are from channels with notifications enabled (pre-filtered)
+            self._telegram_service.send_video_summary_notification(new_videos)
+            print(f"[rss] Sent summary notification for {len(new_videos)} new videos.")
         else:
             print("[rss] Video polling completed. No new videos found.")
 
