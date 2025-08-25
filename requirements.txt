@@ -6,3 +6,4 @@ requests==2.31.0
 python-dotenv==1.0.0
 firebase-admin==6.5.0
 croniter==2.0.1
+upstash-redis==0.15.0

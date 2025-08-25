@@ -11,6 +11,7 @@ from ..models.video import Video
 from ..services.firebase_service import FirebaseService, FirebaseRepository
 from ..services.youtube_service import YouTubeService, RSSService
 from ..services.telegram_service import TelegramService
+from ..services.redis_service import RedisService
 
 
 class YouTubeBotService:
@@ -41,12 +42,23 @@ class YouTubeBotService:
             print("[bot] Firebase is required for data persistence. Please check your configuration.")
             raise
 
+        # Initialize Redis service
+        try:
+            self._redis_service = RedisService(config.upstash_redis_url, config.app_name)
+            if not self._redis_service.is_available():
+                raise ValueError("Redis is required but not available")
+        except Exception as e:
+            print(f"[bot] Redis initialization failed: {e}")
+            print("[bot] Redis is required for video storage. Please check your UPSTASH_REDIS_URL.")
+            raise
+
     def start(self) -> None:
         """Start the bot."""
         print("YouTube → Telegram notifier starting…")
         print(f"INIT_MODE={self._config.init_mode}, "
               f"VIDEO_CRON={self._config.video_cron}, "
-              f"CHANNEL_CRON={self._config.channel_cron}")
+              f"CHANNEL_CRON={self._config.channel_cron}, "
+              f"SUMMARY_CRON={self._config.summary_cron}")
 
         # Send startup notification
         self._send_startup_notification()
@@ -54,9 +66,11 @@ class YouTubeBotService:
         # Start background tasks
         channel_thread = threading.Thread(target=self._run_channel_sync, daemon=True)
         video_thread = threading.Thread(target=self._run_video_poll, daemon=True)
+        summary_thread = threading.Thread(target=self._run_summary_sender, daemon=True)
         
         channel_thread.start()
         video_thread.start()
+        summary_thread.start()
 
         # Keep main thread alive
         try:
@@ -78,6 +92,7 @@ class YouTubeBotService:
         config_info = (f"⚙️ *Bot Configuration*\n"
                       f"Video Poll Cron: `{self._config.video_cron}`\n"
                       f"Channel Sync Cron: `{self._config.channel_cron}`\n"
+                      f"Summary Cron: `{self._config.summary_cron}`\n"
                       f"Init Mode: {self._config.init_mode}")
 
         user_title = user_info.title if user_info else None
@@ -123,6 +138,48 @@ class YouTubeBotService:
                 time.sleep(sleep_seconds)
             
             self._poll_videos_once()
+
+    def _run_summary_sender(self) -> None:
+        """Background task to send daily video summaries.
+        
+        Retrieves videos from Redis and sends summary notifications.
+        Clears Redis data after successful summary send.
+        """
+        cron = croniter(self._config.summary_cron, datetime.now())
+        
+        while True:
+            next_summary = cron.get_next(datetime)
+            print(f"[summary] Next summary scheduled at: {next_summary.strftime('%Y-%m-%d %H:%M:%S')}")
+            
+            # Calculate sleep time until next execution
+            sleep_seconds = (next_summary - datetime.now()).total_seconds()
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+            
+            self._send_daily_summary()
+
+    def _send_daily_summary(self) -> None:
+        """Send daily summary of stored videos and clear Redis data."""
+        try:
+            print("[summary] Generating daily video summary...")
+            
+            # Get stored videos from Redis
+            stored_videos = self._redis_service.get_stored_videos()
+            
+            if not stored_videos:
+                print("[summary] No videos found in Redis. No summary to send.")
+                return
+            
+            # Send summary notification
+            self._telegram_service.send_video_summary_notification(stored_videos)
+            print(f"[summary] Sent daily summary with {len(stored_videos)} videos.")
+            
+            # Clear Redis data after successful send
+            cleared_count = self._redis_service.clear_stored_videos()
+            print(f"[summary] Cleared {cleared_count} videos from Redis.")
+            
+        except Exception as e:
+            print(f"[summary] Error sending daily summary: {e}")
 
     def _sync_subscriptions(self) -> None:
         """Sync YouTube subscriptions using YouTube Data API v3.
@@ -212,11 +269,13 @@ class YouTubeBotService:
                 self._process_new_video(channel, latest_video)
                 new_videos.append(latest_video)
 
-        # Send summary notification for all new videos
+        # Store new videos in Redis instead of sending immediate notifications
         if new_videos:
-            # All videos are from channels with notifications enabled (pre-filtered)
-            self._telegram_service.send_video_summary_notification(new_videos)
-            print(f"[rss] Sent summary notification for {len(new_videos)} new videos.")
+            stored_count = 0
+            for video in new_videos:
+                self._redis_service.store_video(video)
+                stored_count += 1
+            print(f"[rss] Stored {stored_count} new videos in Redis for later summary.")
         else:
             print("[rss] Video polling completed. No new videos found.")
 
