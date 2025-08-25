@@ -28,16 +28,25 @@ class BotConfig:
     # Timing configuration
     video_cron: str
     channel_cron: str
+    summary_cron: str
     init_mode: bool
+    
+    # Redis configuration
+    upstash_redis_url: str
+    app_name: str
     
     @classmethod
     def from_env(cls) -> "BotConfig":
         """Create configuration from environment variables."""
         telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        upstash_redis_url = os.getenv("UPSTASH_REDIS_URL", "").strip()
         
         if not telegram_bot_token or not telegram_chat_id:
             raise ValueError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set")
+        
+        if not upstash_redis_url:
+            raise ValueError("UPSTASH_REDIS_URL must be set")
         
         return cls(
             telegram_bot_token=telegram_bot_token,
@@ -48,7 +57,10 @@ class BotConfig:
             youtube_scopes=["https://www.googleapis.com/auth/youtube.readonly"],
             video_cron=os.getenv("VIDEO_CRON", "0 * * * *"),        # Every hour
             channel_cron=os.getenv("CHANNEL_CRON", "0 0 * * *"),   # Daily at midnight
-            init_mode=os.getenv("INIT_MODE", "false").lower() in ("1", "true", "yes", "y")
+            summary_cron=os.getenv("SUMMARY_CRON", "0 16 * * *"),  # Daily at 00:00 UTC+8 (16:00 UTC)
+            init_mode=os.getenv("INIT_MODE", "false").lower() in ("1", "true", "yes", "y"),
+            upstash_redis_url=upstash_redis_url,
+            app_name=os.getenv("APP_NAME", "youtube-bot")
         )
     
     def validate(self) -> None:
@@ -62,3 +74,8 @@ class BotConfig:
             croniter(self.channel_cron)
         except ValueError as e:
             raise ValueError(f"Invalid CHANNEL_CRON expression: {e}")
+        
+        try:
+            croniter(self.summary_cron)
+        except ValueError as e:
+            raise ValueError(f"Invalid SUMMARY_CRON expression: {e}")
