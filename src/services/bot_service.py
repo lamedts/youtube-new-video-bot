@@ -163,23 +163,37 @@ class YouTubeBotService:
         try:
             print("[summary] Generating daily video summary...")
             
-            # Get stored videos from Redis
+            # Get stored videos and filtered count from Redis
             stored_videos = self._redis_service.get_stored_videos()
+            filtered_count = self._redis_service.get_filtered_count()
             
-            if not stored_videos:
+            if not stored_videos and filtered_count == 0:
                 print("[summary] No videos found in Redis. No summary to send.")
                 return
             
-            # Send summary notification
-            self._telegram_service.send_video_summary_notification(stored_videos)
-            print(f"[summary] Sent daily summary with {len(stored_videos)} videos.")
+            # Send summary notification with filtered count
+            self._telegram_service.send_video_summary_notification(stored_videos, filtered_count)
+            
+            video_count = len(stored_videos)
+            summary_info = f"[summary] Sent daily summary with {video_count} videos"
+            if filtered_count > 0:
+                summary_info += f" ({filtered_count} shorts/non-standard filtered out)"
+            print(f"{summary_info}.")
             
             # Clear Redis data after successful send
             cleared_count = self._redis_service.clear_stored_videos()
-            print(f"[summary] Cleared {cleared_count} videos from Redis.")
+            print(f"[summary] Cleared {cleared_count} videos and filtered count from Redis.")
             
         except Exception as e:
             print(f"[summary] Error sending daily summary: {e}")
+
+    def _is_full_youtube_video(self, video: Video) -> bool:
+        """Check if video has full YouTube watch URL format (not a short)."""
+        if not video.link:
+            return False
+        
+        # Check if the URL matches the full YouTube watch format
+        return video.link.startswith("https://www.youtube.com/watch?v=")
 
     def _sync_subscriptions(self) -> None:
         """Sync YouTube subscriptions using YouTube Data API v3.
@@ -269,13 +283,27 @@ class YouTubeBotService:
                 self._process_new_video(channel, latest_video)
                 new_videos.append(latest_video)
 
-        # Store new videos in Redis instead of sending immediate notifications
+        # Filter and store new videos in Redis (only full YouTube videos, not shorts)
         if new_videos:
             stored_count = 0
+            filtered_count = 0
             for video in new_videos:
-                self._redis_service.store_video(video)
-                stored_count += 1
-            print(f"[rss] Stored {stored_count} new videos in Redis for later summary.")
+                if self._is_full_youtube_video(video):
+                    self._redis_service.store_video(video)
+                    stored_count += 1
+                else:
+                    filtered_count += 1
+            
+            # Store filtered count in Redis for summary reporting
+            if filtered_count > 0:
+                self._redis_service.increment_filtered_count(filtered_count)
+            
+            if stored_count > 0:
+                print(f"[rss] Stored {stored_count} new videos in Redis for later summary.")
+            if filtered_count > 0:
+                print(f"[rss] Filtered out {filtered_count} shorts/non-standard videos.")
+            if stored_count == 0 and filtered_count == 0:
+                print("[rss] No new videos to store.")
         else:
             print("[rss] Video polling completed. No new videos found.")
 

@@ -24,6 +24,12 @@ class RedisService:
             date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         return f"{self._app_name}:videos:{date_str}"
 
+    def _get_filtered_count_key(self, date_str: Optional[str] = None) -> str:
+        """Get Redis key for storing filtered video count with app prefix."""
+        if date_str is None:
+            date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return f"{self._app_name}:filtered_count:{date_str}"
+
     def store_video(self, video: Video) -> None:
         """Store a video in Redis for later summary."""
         try:
@@ -66,12 +72,37 @@ class RedisService:
             print(f"[redis] Error retrieving videos: {e}")
             return []
 
+    def increment_filtered_count(self, count: int = 1, date_str: Optional[str] = None) -> None:
+        """Increment the filtered video count for a given date."""
+        try:
+            key = self._get_filtered_count_key(date_str)
+            self._redis.incrby(key, count)
+            
+            # Set expiry to 7 days to prevent indefinite accumulation
+            self._redis.expire(key, 604800)  # 7 days in seconds
+            
+        except Exception as e:
+            print(f"[redis] Error incrementing filtered count: {e}")
+
+    def get_filtered_count(self, date_str: Optional[str] = None) -> int:
+        """Get count of filtered videos for a given date."""
+        try:
+            key = self._get_filtered_count_key(date_str)
+            return int(self._redis.get(key) or 0)
+            
+        except Exception as e:
+            print(f"[redis] Error getting filtered count: {e}")
+            return 0
+
     def clear_stored_videos(self, date_str: Optional[str] = None) -> int:
         """Clear all stored videos for a given date and return count of cleared items."""
         try:
-            key = self._get_videos_key(date_str)
-            count = self._redis.llen(key) or 0
-            self._redis.delete(key)
+            videos_key = self._get_videos_key(date_str)
+            filtered_key = self._get_filtered_count_key(date_str)
+            
+            count = self._redis.llen(videos_key) or 0
+            self._redis.delete(videos_key)
+            self._redis.delete(filtered_key)  # Also clear filtered count
             return count
             
         except Exception as e:

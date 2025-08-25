@@ -52,12 +52,19 @@ class TelegramService:
         message = f"🆕 *New subscription detected*\n*{channel_title}*\nhttps://www.youtube.com/channel/{channel_id}"
         return self.send_message(message)
 
-    def send_video_summary_notification(self, new_videos: List[Video]) -> bool:
+    def send_video_summary_notification(self, new_videos: List[Video], filtered_count: int = 0) -> bool:
         """Send a summary notification for new videos."""
-        if not new_videos:
+        if not new_videos and filtered_count == 0:
             return True
 
         video_count = len(new_videos)
-        message = f"📺 *{video_count} new video{'s' if video_count > 1 else ''} found!*"
+        
+        if video_count > 0:
+            message = f"📺 *{video_count} new video{'s' if video_count > 1 else ''} found!*"
+        else:
+            message = f"📺 *Daily Summary*"
+            
+        if filtered_count > 0:
+            message += f"\n🚫 _{filtered_count} short{'s' if filtered_count > 1 else ''}/non-standard video{'s' if filtered_count > 1 else ''} filtered out_"
 
         return self.send_message(message)
