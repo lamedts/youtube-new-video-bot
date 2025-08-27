@@ -257,6 +257,7 @@ class YouTubeBotService:
         """
         print("[rss] polling new videos (using RSS - free)")
         new_videos = []
+        firestore_filtered_count = 0
         channels = self._firebase_service.get_all_channels()
         
         # Filter channels to only poll those with notifications enabled
@@ -275,43 +276,46 @@ class YouTubeBotService:
             # Check if this is a new video
             if not channel.last_video_id:
                 # First-time bootstrap - save video but only notify if INIT_MODE=false
-                self._process_new_video(channel, latest_video)
-                if not self._config.init_mode:
+                video_saved = self._process_new_video(channel, latest_video)
+                if video_saved and not self._config.init_mode:
                     new_videos.append(latest_video)
+                elif not video_saved:
+                    firestore_filtered_count += 1
             elif latest_video.video_id != channel.last_video_id:
                 # New video detected - always include in notifications
-                self._process_new_video(channel, latest_video)
-                new_videos.append(latest_video)
+                video_saved = self._process_new_video(channel, latest_video)
+                if video_saved:
+                    new_videos.append(latest_video)
+                else:
+                    firestore_filtered_count += 1
 
-        # Filter and store new videos in Redis (only full YouTube videos, not shorts)
+        # Store new videos in Redis (all videos here are already full YouTube videos)
         if new_videos:
             stored_count = 0
-            filtered_count = 0
             for video in new_videos:
-                if self._is_full_youtube_video(video):
-                    self._redis_service.store_video(video)
-                    stored_count += 1
-                else:
-                    filtered_count += 1
+                self._redis_service.store_video(video)
+                stored_count += 1
             
+            print(f"[rss] Stored {stored_count} new videos in Redis for later summary.")
+        
+        # Report filtering statistics
+        if firestore_filtered_count > 0:
+            print(f"[rss] Filtered out {firestore_filtered_count} shorts/non-standard videos (not saved to Firestore).")
             # Store filtered count in Redis for summary reporting
-            if filtered_count > 0:
-                self._redis_service.increment_filtered_count(filtered_count)
-            
-            if stored_count > 0:
-                print(f"[rss] Stored {stored_count} new videos in Redis for later summary.")
-            if filtered_count > 0:
-                print(f"[rss] Filtered out {filtered_count} shorts/non-standard videos.")
-            if stored_count == 0 and filtered_count == 0:
-                print("[rss] No new videos to store.")
-        else:
+            self._redis_service.increment_filtered_count(firestore_filtered_count)
+        
+        if not new_videos and firestore_filtered_count == 0:
             print("[rss] Video polling completed. No new videos found.")
 
-    def _process_new_video(self, channel: Channel, video: Video) -> None:
-        """Process a new video discovery."""
+    def _process_new_video(self, channel: Channel, video: Video) -> bool:
+        """Process a new video discovery. Returns True if video was saved, False if filtered out."""
         from datetime import datetime
         
-        # Save to Firebase
+        # Filter out shorts before saving to Firestore
+        if not self._is_full_youtube_video(video):
+            return False
+        
+        # Save to Firebase (only full videos, not shorts)
         self._firebase_service.save_video(video)
         self._firebase_service.update_channel_last_video(channel.channel_id, video.video_id)
         
@@ -332,6 +336,8 @@ class YouTubeBotService:
             except (ValueError, TypeError):
                 # If we can't parse the date, just update without last_upload_at
                 pass
+        
+        return True
 
     def toggle_channel_notifications(self, channel_id: str) -> bool:
         """Toggle notification preference for a channel."""
