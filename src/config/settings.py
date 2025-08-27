@@ -39,6 +39,10 @@ class BotConfig:
     oauth_port_start: int
     oauth_timeout: int
     oauth_auto_browser: bool
+    oauth_callback_domain: Optional[str]
+    oauth_use_ssl: bool
+    oauth_ssl_cert_path: Optional[str]
+    oauth_ssl_key_path: Optional[str]
     
     @classmethod
     def from_env(cls) -> "BotConfig":
@@ -68,7 +72,11 @@ class BotConfig:
             app_name=os.getenv("APP_NAME", "youtube-bot"),
             oauth_port_start=int(os.getenv("OAUTH_PORT_START", "8080")),
             oauth_timeout=int(os.getenv("OAUTH_TIMEOUT", "300")),
-            oauth_auto_browser=os.getenv("OAUTH_AUTO_BROWSER", "true").lower() in ("1", "true", "yes", "y")
+            oauth_auto_browser=os.getenv("OAUTH_AUTO_BROWSER", "true").lower() in ("1", "true", "yes", "y"),
+            oauth_callback_domain=os.getenv("OAUTH_CALLBACK_DOMAIN"),  # None means localhost
+            oauth_use_ssl=os.getenv("OAUTH_USE_SSL", "false").lower() in ("1", "true", "yes", "y"),
+            oauth_ssl_cert_path=os.getenv("OAUTH_SSL_CERT_PATH"),
+            oauth_ssl_key_path=os.getenv("OAUTH_SSL_KEY_PATH")
         )
     
     def validate(self) -> None:

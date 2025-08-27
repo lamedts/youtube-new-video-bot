@@ -27,7 +27,11 @@ class YouTubeBotService:
             config.youtube_scopes,
             oauth_port_start=config.oauth_port_start,
             oauth_timeout=config.oauth_timeout,
-            oauth_auto_browser=config.oauth_auto_browser
+            oauth_auto_browser=config.oauth_auto_browser,
+            oauth_callback_domain=config.oauth_callback_domain,
+            oauth_use_ssl=config.oauth_use_ssl,
+            oauth_ssl_cert_path=config.oauth_ssl_cert_path,
+            oauth_ssl_key_path=config.oauth_ssl_key_path
         )
         self._rss_service = RSSService()
         self._telegram_service = TelegramService(

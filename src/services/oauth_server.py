@@ -14,15 +14,26 @@ import urllib.parse
 class OAuthCallbackServer:
     """Temporary web server to handle OAuth2 callbacks."""
     
-    def __init__(self, port_range: Tuple[int, int] = (8080, 8089), timeout: int = 300):
+    def __init__(self, port_range: Tuple[int, int] = (8080, 8089), timeout: int = 300,
+                 callback_domain: Optional[str] = None, use_ssl: bool = False,
+                 ssl_cert_path: Optional[str] = None, ssl_key_path: Optional[str] = None):
         """Initialize OAuth callback server.
         
         Args:
             port_range: Range of ports to try (start, end)
             timeout: Timeout in seconds for authentication
+            callback_domain: Domain for callback URL (None = localhost)
+            use_ssl: Whether to use SSL/HTTPS
+            ssl_cert_path: Path to SSL certificate file
+            ssl_key_path: Path to SSL private key file
         """
         self.port_range = port_range
         self.timeout = timeout
+        self.callback_domain = callback_domain
+        self.use_ssl = use_ssl
+        self.ssl_cert_path = ssl_cert_path
+        self.ssl_key_path = ssl_key_path
+        
         self.app = None
         self.server = None
         self.port = None
@@ -34,10 +45,13 @@ class OAuthCallbackServer:
         
     def _find_available_port(self) -> Optional[int]:
         """Find an available port in the specified range."""
+        # Use 0.0.0.0 for external domain access, localhost for local
+        bind_host = '0.0.0.0' if self.callback_domain else 'localhost'
+        
         for port in range(self.port_range[0], self.port_range[1] + 1):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(('localhost', port))
+                    s.bind((bind_host, port))
                     return port
             except OSError:
                 continue
@@ -180,14 +194,37 @@ class OAuthCallbackServer:
         
         try:
             self.app = self._create_flask_app()
-            self.server = make_server('localhost', self.port, self.app, threaded=True)
+            
+            # Determine bind host and callback URL
+            if self.callback_domain:
+                bind_host = '0.0.0.0'  # Accept external connections
+                scheme = 'https' if self.use_ssl else 'http'
+                callback_url = f"{scheme}://{self.callback_domain}:{self.port}/oauth2callback"
+            else:
+                bind_host = 'localhost'
+                callback_url = f"http://localhost:{self.port}/oauth2callback"
+            
+            # Create server with SSL context if needed
+            if self.use_ssl and self.ssl_cert_path and self.ssl_key_path:
+                import ssl
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ssl_context.load_cert_chain(self.ssl_cert_path, self.ssl_key_path)
+                print(f"[oauth] Using SSL certificate: {self.ssl_cert_path}")
+                
+                self.server = make_server(bind_host, self.port, self.app, 
+                                        threaded=True, ssl_context=ssl_context)
+            else:
+                self.server = make_server(bind_host, self.port, self.app, threaded=True)
             
             # Start server in background thread
             self._server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
             self._server_thread.start()
             
-            callback_url = f"http://localhost:{self.port}/oauth2callback"
-            print(f"[oauth] OAuth callback server started on {callback_url}")
+            if self.callback_domain:
+                print(f"[oauth] OAuth callback server started on {bind_host}:{self.port}")
+                print(f"[oauth] External callback URL: {callback_url}")
+            else:
+                print(f"[oauth] OAuth callback server started on {callback_url}")
             
             return callback_url
             
@@ -254,7 +291,9 @@ class OAuthCallbackServer:
 
 def run_oauth_flow(client_secrets_file: str, scopes: list, 
                    port_range: Tuple[int, int] = (8080, 8089),
-                   timeout: int = 300, auto_browser: bool = True) -> Optional[dict]:
+                   timeout: int = 300, auto_browser: bool = True,
+                   callback_domain: Optional[str] = None, use_ssl: bool = False,
+                   ssl_cert_path: Optional[str] = None, ssl_key_path: Optional[str] = None) -> Optional[dict]:
     """Run complete OAuth2 flow with temporary web server.
     
     Args:
@@ -263,13 +302,19 @@ def run_oauth_flow(client_secrets_file: str, scopes: list,
         port_range: Range of ports to try for callback server
         timeout: Timeout in seconds for user to complete authorization
         auto_browser: Whether to automatically open browser
+        callback_domain: Domain for callback URL (None = localhost)
+        use_ssl: Whether to use SSL/HTTPS
+        ssl_cert_path: Path to SSL certificate file
+        ssl_key_path: Path to SSL private key file
         
     Returns:
         OAuth credentials dict or None if failed
     """
     from google_auth_oauthlib.flow import Flow
     
-    server = OAuthCallbackServer(port_range, timeout)
+    server = OAuthCallbackServer(
+        port_range, timeout, callback_domain, use_ssl, ssl_cert_path, ssl_key_path
+    )
     
     try:
         # Generate secure state parameter

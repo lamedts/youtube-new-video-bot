@@ -19,7 +19,9 @@ class YouTubeService:
     """Service for YouTube API operations."""
     
     def __init__(self, client_secret_file: str, token_file: str, scopes: List[str], 
-                 oauth_port_start: int = 8080, oauth_timeout: int = 300, oauth_auto_browser: bool = True):
+                 oauth_port_start: int = 8080, oauth_timeout: int = 300, oauth_auto_browser: bool = True,
+                 oauth_callback_domain: Optional[str] = None, oauth_use_ssl: bool = False,
+                 oauth_ssl_cert_path: Optional[str] = None, oauth_ssl_key_path: Optional[str] = None):
         self._client_secret_file = client_secret_file
         self._token_file = token_file
         self._scopes = scopes
@@ -27,6 +29,10 @@ class YouTubeService:
         self._oauth_port_start = oauth_port_start
         self._oauth_timeout = oauth_timeout
         self._oauth_auto_browser = oauth_auto_browser
+        self._oauth_callback_domain = oauth_callback_domain
+        self._oauth_use_ssl = oauth_use_ssl
+        self._oauth_ssl_cert_path = oauth_ssl_cert_path
+        self._oauth_ssl_key_path = oauth_ssl_key_path
     
     def _get_authenticated_client(self):
         """Get authenticated YouTube client with robust token refresh logic."""
@@ -124,12 +130,26 @@ class YouTubeService:
             
             # Try web-based OAuth flow first
             port_range = (self._oauth_port_start, self._oauth_port_start + 9)
+            
+            # Show configuration info
+            if self._oauth_callback_domain:
+                scheme = 'https' if self._oauth_use_ssl else 'http'
+                print(f"[youtube] Using domain callback: {scheme}://{self._oauth_callback_domain}:{{port}}/oauth2callback")
+                if self._oauth_use_ssl:
+                    print(f"[youtube] SSL enabled with certificate: {self._oauth_ssl_cert_path}")
+            else:
+                print("[youtube] Using localhost callback (development mode)")
+            
             credentials_dict = run_oauth_flow(
                 self._client_secret_file,
                 self._scopes,
                 port_range=port_range,
                 timeout=self._oauth_timeout,
-                auto_browser=self._oauth_auto_browser
+                auto_browser=self._oauth_auto_browser,
+                callback_domain=self._oauth_callback_domain,
+                use_ssl=self._oauth_use_ssl,
+                ssl_cert_path=self._oauth_ssl_cert_path,
+                ssl_key_path=self._oauth_ssl_key_path
             )
             
             if credentials_dict:
