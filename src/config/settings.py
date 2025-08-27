@@ -36,7 +36,7 @@ class BotConfig:
     app_name: str
     
     # OAuth configuration
-    oauth_port_start: int
+    oauth_port: int
     oauth_timeout: int
     oauth_auto_browser: bool
     oauth_callback_domain: Optional[str]
@@ -70,7 +70,7 @@ class BotConfig:
             init_mode=os.getenv("INIT_MODE", "false").lower() in ("1", "true", "yes", "y"),
             upstash_redis_url=upstash_redis_url,
             app_name=os.getenv("APP_NAME", "youtube-bot"),
-            oauth_port_start=int(os.getenv("OAUTH_PORT_START", "8080")),
+            oauth_port=int(os.getenv("OAUTH_PORT", os.getenv("OAUTH_PORT_START", "8080"))),  # Support both for backward compatibility
             oauth_timeout=int(os.getenv("OAUTH_TIMEOUT", "300")),
             oauth_auto_browser=os.getenv("OAUTH_AUTO_BROWSER", "true").lower() in ("1", "true", "yes", "y"),
             oauth_callback_domain=os.getenv("OAUTH_CALLBACK_DOMAIN"),  # None means localhost

@@ -19,14 +19,14 @@ class YouTubeService:
     """Service for YouTube API operations."""
     
     def __init__(self, client_secret_file: str, token_file: str, scopes: List[str], 
-                 oauth_port_start: int = 8080, oauth_timeout: int = 300, oauth_auto_browser: bool = True,
+                 oauth_port: int = 8080, oauth_timeout: int = 300, oauth_auto_browser: bool = True,
                  oauth_callback_domain: Optional[str] = None, oauth_use_ssl: bool = False,
                  oauth_ssl_cert_path: Optional[str] = None, oauth_ssl_key_path: Optional[str] = None):
         self._client_secret_file = client_secret_file
         self._token_file = token_file
         self._scopes = scopes
         self._client = None
-        self._oauth_port_start = oauth_port_start
+        self._oauth_port = oauth_port
         self._oauth_timeout = oauth_timeout
         self._oauth_auto_browser = oauth_auto_browser
         self._oauth_callback_domain = oauth_callback_domain
@@ -129,21 +129,20 @@ class YouTubeService:
             print("[youtube] Starting automated OAuth authentication flow...")
             
             # Try web-based OAuth flow first
-            port_range = (self._oauth_port_start, self._oauth_port_start + 9)
             
             # Show configuration info
             if self._oauth_callback_domain:
                 scheme = 'https' if self._oauth_use_ssl else 'http'
-                print(f"[youtube] Using domain callback: {scheme}://{self._oauth_callback_domain}:{{port}}/oauth2callback")
+                print(f"[youtube] Using domain callback: {scheme}://{self._oauth_callback_domain}:{self._oauth_port}/oauth2callback")
                 if self._oauth_use_ssl:
                     print(f"[youtube] SSL enabled with certificate: {self._oauth_ssl_cert_path}")
             else:
-                print("[youtube] Using localhost callback (development mode)")
+                print(f"[youtube] Using localhost callback on port {self._oauth_port}")
             
             credentials_dict = run_oauth_flow(
                 self._client_secret_file,
                 self._scopes,
-                port_range=port_range,
+                port=self._oauth_port,
                 timeout=self._oauth_timeout,
                 auto_browser=self._oauth_auto_browser,
                 callback_domain=self._oauth_callback_domain,

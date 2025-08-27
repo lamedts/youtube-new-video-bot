@@ -25,7 +25,7 @@ class YouTubeBotService:
             config.youtube_client_secret_file,
             config.youtube_token_file,
             config.youtube_scopes,
-            oauth_port_start=config.oauth_port_start,
+            oauth_port=config.oauth_port,
             oauth_timeout=config.oauth_timeout,
             oauth_auto_browser=config.oauth_auto_browser,
             oauth_callback_domain=config.oauth_callback_domain,
