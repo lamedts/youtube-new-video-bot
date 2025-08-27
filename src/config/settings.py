@@ -35,6 +35,11 @@ class BotConfig:
     upstash_redis_url: str
     app_name: str
     
+    # OAuth configuration
+    oauth_port_start: int
+    oauth_timeout: int
+    oauth_auto_browser: bool
+    
     @classmethod
     def from_env(cls) -> "BotConfig":
         """Create configuration from environment variables."""
@@ -60,7 +65,10 @@ class BotConfig:
             summary_cron=os.getenv("SUMMARY_CRON", "0 16 * * *"),  # Daily at 00:00 UTC+8 (16:00 UTC)
             init_mode=os.getenv("INIT_MODE", "false").lower() in ("1", "true", "yes", "y"),
             upstash_redis_url=upstash_redis_url,
-            app_name=os.getenv("APP_NAME", "youtube-bot")
+            app_name=os.getenv("APP_NAME", "youtube-bot"),
+            oauth_port_start=int(os.getenv("OAUTH_PORT_START", "8080")),
+            oauth_timeout=int(os.getenv("OAUTH_TIMEOUT", "300")),
+            oauth_auto_browser=os.getenv("OAUTH_AUTO_BROWSER", "true").lower() in ("1", "true", "yes", "y")
         )
     
     def validate(self) -> None:

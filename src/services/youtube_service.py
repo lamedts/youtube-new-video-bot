@@ -4,7 +4,7 @@ import os
 from typing import List, Tuple, Optional
 from datetime import datetime, timedelta
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import InstalledAppFlow, Flow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
@@ -12,16 +12,21 @@ import feedparser
 
 from ..models.channel import UserChannelInfo, Channel
 from ..models.video import Video
+from .oauth_server import run_oauth_flow
 
 
 class YouTubeService:
     """Service for YouTube API operations."""
     
-    def __init__(self, client_secret_file: str, token_file: str, scopes: List[str]):
+    def __init__(self, client_secret_file: str, token_file: str, scopes: List[str], 
+                 oauth_port_start: int = 8080, oauth_timeout: int = 300, oauth_auto_browser: bool = True):
         self._client_secret_file = client_secret_file
         self._token_file = token_file
         self._scopes = scopes
         self._client = None
+        self._oauth_port_start = oauth_port_start
+        self._oauth_timeout = oauth_timeout
+        self._oauth_auto_browser = oauth_auto_browser
     
     def _get_authenticated_client(self):
         """Get authenticated YouTube client with robust token refresh logic."""
@@ -113,14 +118,60 @@ class YouTubeService:
         return creds
     
     def _perform_new_authentication(self):
-        """Perform new OAuth authentication flow."""
+        """Perform new OAuth authentication flow using web server."""
         try:
-            print("[youtube] Starting new authentication flow...")
+            print("[youtube] Starting automated OAuth authentication flow...")
+            
+            # Try web-based OAuth flow first
+            port_range = (self._oauth_port_start, self._oauth_port_start + 9)
+            credentials_dict = run_oauth_flow(
+                self._client_secret_file,
+                self._scopes,
+                port_range=port_range,
+                timeout=self._oauth_timeout,
+                auto_browser=self._oauth_auto_browser
+            )
+            
+            if credentials_dict:
+                # Convert dict back to Credentials object
+                creds = Credentials(
+                    token=credentials_dict['token'],
+                    refresh_token=credentials_dict['refresh_token'],
+                    token_uri=credentials_dict['token_uri'],
+                    client_id=credentials_dict['client_id'],
+                    client_secret=credentials_dict['client_secret'],
+                    scopes=credentials_dict['scopes']
+                )
+                
+                # Set expiry if available
+                if credentials_dict.get('expiry'):
+                    creds.expiry = datetime.fromisoformat(credentials_dict['expiry'])
+                
+                print(f"[youtube] Web-based authentication successful, expires at: {creds.expiry}")
+                return creds
+            
+            # Fallback to manual flow if web flow fails
+            print("[youtube] Web-based OAuth failed, falling back to manual flow...")
+            return self._perform_manual_authentication()
+            
+        except Exception as e:
+            print(f"[youtube] Automated authentication flow failed: {e}")
+            print("[youtube] Falling back to manual authentication...")
+            return self._perform_manual_authentication()
+    
+    def _perform_manual_authentication(self):
+        """Perform manual OAuth authentication flow as fallback."""
+        try:
+            print("[youtube] Starting manual authentication flow...")
             flow = InstalledAppFlow.from_client_secrets_file(
                 self._client_secret_file, self._scopes
             )
             flow.redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
-            auth_url, _ = flow.authorization_url(prompt='consent')
+            auth_url, _ = flow.authorization_url(
+                access_type='offline',
+                prompt='consent',
+                include_granted_scopes='true'
+            )
             print(f"[youtube] Please visit this URL to authorize the application:")
             print(f"[youtube] {auth_url}")
             
@@ -128,11 +179,11 @@ class YouTubeService:
             flow.fetch_token(code=auth_code)
             creds = flow.credentials
             
-            print(f"[youtube] New authentication successful, expires at: {creds.expiry}")
+            print(f"[youtube] Manual authentication successful, expires at: {creds.expiry}")
             return creds
             
         except Exception as e:
-            print(f"[youtube] Authentication flow failed: {e}")
+            print(f"[youtube] Manual authentication flow failed: {e}")
             return None
     
     def get_user_channel_info(self) -> Optional[UserChannelInfo]:

@@ -24,7 +24,10 @@ class YouTubeBotService:
         self._youtube_service = YouTubeService(
             config.youtube_client_secret_file,
             config.youtube_token_file,
-            config.youtube_scopes
+            config.youtube_scopes,
+            oauth_port_start=config.oauth_port_start,
+            oauth_timeout=config.oauth_timeout,
+            oauth_auto_browser=config.oauth_auto_browser
         )
         self._rss_service = RSSService()
         self._telegram_service = TelegramService(
