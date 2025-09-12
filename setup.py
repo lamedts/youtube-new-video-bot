@@ -9,7 +9,7 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=requirements,
-    python_requires=">=3.12,<3.13",  # enforce Python version
+    # python_requires=">=3.12,<3.13",  # enforce Python version
     entry_points={
         "console_scripts": [
             "youtube-bot=main:main",  # allows running bot as `youtube-bot`

@@ -37,6 +37,10 @@ class FirebaseRepository(Protocol):
         """Check if a channel exists in Firebase."""
         ...
 
+    def channels_exist_batch(self, channel_ids: list[str]) -> dict[str, bool]:
+        """Check if multiple channels exist in Firebase."""
+        ...
+
     def update_last_sync_time(self) -> bool:
         """Update the last subscription sync timestamp."""
         ...
@@ -52,6 +56,9 @@ class FirebaseService:
     def __init__(self, credentials_file: str):
         self._credentials_file = credentials_file
         self._db: Optional[firestore.Client] = None
+        self._channels_cache: Optional[list[Channel]] = None
+        self._cache_timestamp: Optional[datetime] = None
+        self._cache_ttl_minutes = 30  # Cache for 30 minutes
         self._initialize()
 
     def _initialize(self) -> None:
@@ -106,6 +113,8 @@ class FirebaseService:
             self._db.collection('subscriptions').document(channel.channel_id).set(
                 channel_data, merge=True
             )
+            # Invalidate cache since channels list changed
+            self._invalidate_cache()
             # print(f"[firebase] Saved subscription: {channel.title}")
             return True
         except Exception as e:
@@ -127,10 +136,27 @@ class FirebaseService:
             print(f"[firebase] Error updating channel last video: {e}")
             return False
 
+    def _is_cache_valid(self) -> bool:
+        """Check if the channels cache is still valid."""
+        if not self._cache_timestamp or not self._channels_cache:
+            return False
+        
+        cache_age = datetime.now() - self._cache_timestamp
+        return cache_age.total_seconds() < (self._cache_ttl_minutes * 60)
+
+    def _invalidate_cache(self) -> None:
+        """Invalidate the channels cache."""
+        self._channels_cache = None
+        self._cache_timestamp = None
+
     def get_all_channels(self) -> list[Channel]:
-        """Get all subscribed channels from Firebase."""
+        """Get all subscribed channels from Firebase with caching."""
         if not self._db:
             return []
+
+        # Return cached data if valid
+        if self._is_cache_valid():
+            return self._channels_cache.copy()
 
         try:
             docs = self._db.collection('subscriptions').get()
@@ -158,6 +184,11 @@ class FirebaseService:
                 )
                 channels.append(channel)
 
+            # Cache the results
+            self._channels_cache = channels
+            self._cache_timestamp = datetime.now()
+            print(f"[firebase] Cached {len(channels)} channels for {self._cache_ttl_minutes} minutes")
+
             return channels
         except Exception as e:
             print(f"[firebase] Error getting channels: {e}")
@@ -167,6 +198,14 @@ class FirebaseService:
         """Get a specific channel by ID."""
         if not self._db:
             raise ValueError("Firebase not available")
+
+        # First try to get from cache if valid
+        if self._is_cache_valid() and self._channels_cache:
+            for channel in self._channels_cache:
+                if channel.channel_id == channel_id:
+                    return channel
+            # If not in cache, channel doesn't exist
+            raise KeyError(f"Channel {channel_id} not found")
 
         try:
             doc = self._db.collection('subscriptions').document(channel_id).get()
@@ -201,12 +240,32 @@ class FirebaseService:
         if not self._db:
             return False
 
+        # First check cache if valid
+        if self._is_cache_valid() and self._channels_cache:
+            return any(channel.channel_id == channel_id for channel in self._channels_cache)
+
         try:
             doc = self._db.collection('subscriptions').document(channel_id).get()
             return doc.exists
         except Exception as e:
             print(f"[firebase] Error checking channel existence: {e}")
             return False
+
+    def channels_exist_batch(self, channel_ids: list[str]) -> dict[str, bool]:
+        """Check if multiple channels exist in Firebase using cached data when possible."""
+        if not self._db:
+            return {channel_id: False for channel_id in channel_ids}
+
+        # If cache is valid, use it for all checks
+        if self._is_cache_valid() and self._channels_cache:
+            cached_ids = {channel.channel_id for channel in self._channels_cache}
+            return {channel_id: channel_id in cached_ids for channel_id in channel_ids}
+
+        # Otherwise fall back to individual checks (could be optimized further with batch gets)
+        results = {}
+        for channel_id in channel_ids:
+            results[channel_id] = self.channel_exists(channel_id)
+        return results
 
     def update_last_sync_time(self) -> bool:
         """Update the last subscription sync timestamp."""
@@ -232,6 +291,8 @@ class FirebaseService:
                 'notify': notify,
                 'last_updated': firestore.SERVER_TIMESTAMP
             })
+            # Invalidate cache since channel data changed
+            self._invalidate_cache()
             print(f"[firebase] Updated notification preference for {channel_id}: {notify}")
             return True
         except Exception as e:
@@ -269,6 +330,10 @@ class NullFirebaseService:
     def channel_exists(self, channel_id: str) -> bool:
         print("[firebase] Firebase not available, assuming channel doesn't exist")
         return False
+
+    def channels_exist_batch(self, channel_ids: list[str]) -> dict[str, bool]:
+        print("[firebase] Firebase not available, assuming no channels exist")
+        return {channel_id: False for channel_id in channel_ids}
 
     def update_last_sync_time(self) -> bool:
         print("[firebase] Firebase not available, skipping sync time update")
