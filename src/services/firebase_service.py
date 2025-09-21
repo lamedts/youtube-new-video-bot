@@ -5,6 +5,7 @@ from typing import Optional, Protocol
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
+import pytz
 
 from ..models.video import Video
 from ..models.channel import Channel
@@ -49,6 +50,10 @@ class FirebaseRepository(Protocol):
         """Update notification preference for a channel."""
         ...
 
+    def get_daily_stats(self) -> dict[str, int]:
+        """Get current daily Firestore operation stats."""
+        ...
+
 
 class FirebaseService:
     """Firebase service implementation."""
@@ -58,8 +63,16 @@ class FirebaseService:
         self._db: Optional[firestore.Client] = None
         self._channels_cache: Optional[list[Channel]] = None
         self._cache_timestamp: Optional[datetime] = None
-        self._cache_ttl_minutes = 30  # Cache for 30 minutes
+        self._cache_ttl_minutes = 1380  # Cache for 23 hours
+        
+        # Firestore operation counters
+        self._read_count = 0
+        self._write_count = 0
+        self._last_reset_date: Optional[str] = None
+        self._utc8_tz = pytz.timezone('Asia/Shanghai')  # UTC+8
+        
         self._initialize()
+        self._check_and_reset_counters()
 
     def _initialize(self) -> None:
         """Initialize Firebase connection."""
@@ -83,6 +96,48 @@ class FirebaseService:
         """Check if Firebase is available."""
         return self._db is not None
 
+    def _get_current_utc8_date(self) -> str:
+        """Get current date in UTC+8 timezone as YYYY-MM-DD string."""
+        utc8_now = datetime.now(self._utc8_tz)
+        return utc8_now.strftime('%Y-%m-%d')
+
+    def _check_and_reset_counters(self) -> None:
+        """Check if counters need to be reset for a new day (UTC+8)."""
+        current_date = self._get_current_utc8_date()
+        
+        if self._last_reset_date != current_date:
+            if self._last_reset_date is not None:
+                print(f"[firebase] Daily reset - Previous day stats: {self._read_count} reads, {self._write_count} writes")
+            
+            self._read_count = 0
+            self._write_count = 0
+            self._last_reset_date = current_date
+            print(f"[firebase] Counters reset for {current_date} (UTC+8)")
+
+    def _increment_read_counter(self, count: int = 1) -> None:
+        """Increment the read counter and check for daily reset."""
+        self._check_and_reset_counters()
+        self._read_count += count
+
+    def _increment_write_counter(self, count: int = 1) -> None:
+        """Increment the write counter and check for daily reset."""
+        self._check_and_reset_counters()
+        self._write_count += count
+
+    def get_daily_stats(self) -> dict[str, int]:
+        """Get current daily Firestore operation stats."""
+        self._check_and_reset_counters()
+        return {
+            'reads': self._read_count,
+            'writes': self._write_count,
+            'date': self._last_reset_date
+        }
+
+    def _log_current_stats(self) -> None:
+        """Log current Firestore operation stats."""
+        stats = self.get_daily_stats()
+        print(f"[firebase] Daily stats ({stats['date']}): {stats['reads']} reads, {stats['writes']} writes")
+
     def save_video(self, video: Video) -> bool:
         """Save video to Firebase."""
         if not self._db:
@@ -92,9 +147,15 @@ class FirebaseService:
             video_data = video.to_dict()
             video_data['discovered_at'] = firestore.SERVER_TIMESTAMP
 
+            # Convert channel_ref to DocumentReference if it's a string (channel_id)
+            if isinstance(video.channel_ref, str):
+                video_data['channel_ref'] = self._db.collection('subscriptions').document(video.channel_ref)
+
             self._db.collection('videos').document(video.video_id).set(
                 video_data, merge=True
             )
+            self._increment_write_counter()
+            self._log_current_stats()
             # print(f"[firebase] Saved video: {video.title}")
             return True
         except Exception as e:
@@ -113,6 +174,8 @@ class FirebaseService:
             self._db.collection('subscriptions').document(channel.channel_id).set(
                 channel_data, merge=True
             )
+            self._increment_write_counter()
+            self._log_current_stats()
             # Invalidate cache since channels list changed
             self._invalidate_cache()
             # print(f"[firebase] Saved subscription: {channel.title}")
@@ -131,6 +194,8 @@ class FirebaseService:
                 'last_video_id': video_id,
                 'last_updated': firestore.SERVER_TIMESTAMP
             })
+            self._increment_write_counter()
+            self._log_current_stats()
             return True
         except Exception as e:
             print(f"[firebase] Error updating channel last video: {e}")
@@ -140,7 +205,7 @@ class FirebaseService:
         """Check if the channels cache is still valid."""
         if not self._cache_timestamp or not self._channels_cache:
             return False
-        
+
         cache_age = datetime.now() - self._cache_timestamp
         return cache_age.total_seconds() < (self._cache_ttl_minutes * 60)
 
@@ -160,11 +225,13 @@ class FirebaseService:
 
         try:
             docs = self._db.collection('subscriptions').get()
+            self._increment_read_counter(len(docs))
+            self._log_current_stats()
             channels = []
 
             for doc in docs:
                 data = doc.to_dict()
-                
+
                 # Parse last_upload_at if it exists
                 last_upload_at = None
                 last_upload_str = data.get('last_upload_at')
@@ -173,7 +240,7 @@ class FirebaseService:
                         last_upload_at = datetime.fromisoformat(last_upload_str)
                     except (ValueError, TypeError):
                         last_upload_at = None
-                
+
                 channel = Channel(
                     channel_id=doc.id,
                     title=data.get('title', doc.id),
@@ -209,11 +276,13 @@ class FirebaseService:
 
         try:
             doc = self._db.collection('subscriptions').document(channel_id).get()
+            self._increment_read_counter()
+            self._log_current_stats()
             if not doc.exists:
                 raise KeyError(f"Channel {channel_id} not found")
 
             data = doc.to_dict()
-            
+
             # Parse last_upload_at if it exists
             last_upload_at = None
             last_upload_str = data.get('last_upload_at')
@@ -222,7 +291,7 @@ class FirebaseService:
                     last_upload_at = datetime.fromisoformat(last_upload_str)
                 except (ValueError, TypeError):
                     last_upload_at = None
-            
+
             return Channel(
                 channel_id=channel_id,
                 title=data.get('title', channel_id),
@@ -246,6 +315,8 @@ class FirebaseService:
 
         try:
             doc = self._db.collection('subscriptions').document(channel_id).get()
+            self._increment_read_counter()
+            self._log_current_stats()
             return doc.exists
         except Exception as e:
             print(f"[firebase] Error checking channel existence: {e}")
@@ -276,6 +347,8 @@ class FirebaseService:
             self._db.collection('bot_state').document('sync_info').set({
                 'last_subs_sync': firestore.SERVER_TIMESTAMP
             }, merge=True)
+            self._increment_write_counter()
+            self._log_current_stats()
             return True
         except Exception as e:
             print(f"[firebase] Error updating sync time: {e}")
@@ -291,6 +364,8 @@ class FirebaseService:
                 'notify': notify,
                 'last_updated': firestore.SERVER_TIMESTAMP
             })
+            self._increment_write_counter()
+            self._log_current_stats()
             # Invalidate cache since channel data changed
             self._invalidate_cache()
             print(f"[firebase] Updated notification preference for {channel_id}: {notify}")
@@ -342,3 +417,7 @@ class NullFirebaseService:
     def update_channel_notify_preference(self, channel_id: str, notify: bool) -> bool:
         print(f"[firebase] Firebase not available, cannot update notification preference for {channel_id}")
         return False
+
+    def get_daily_stats(self) -> dict[str, int]:
+        print("[firebase] Firebase not available, returning empty stats")
+        return {'reads': 0, 'writes': 0, 'date': 'N/A'}

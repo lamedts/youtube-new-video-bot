@@ -312,7 +312,7 @@ class YouTubeService:
 
 class RSSService:
     """Service for RSS feed operations."""
-    
+
     @staticmethod
     def get_latest_video(channel: Channel) -> Optional[Video]:
         """Get latest video from channel's RSS feed."""
@@ -320,10 +320,10 @@ class RSSService:
             feed = feedparser.parse(channel.rss_url)
             if not feed.entries:
                 return None
-            
+
             latest = feed.entries[0]
-            return Video.from_rss_entry(latest, channel.channel_id, channel.title)
-            
+            return Video.from_rss_entry(latest, channel.channel_id)
+
         except Exception as e:
             print(f"[rss] Error parsing {channel.rss_url}: {e}")
             return None

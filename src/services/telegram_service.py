@@ -47,9 +47,9 @@ class TelegramService:
 
         return self.send_message(message)
 
-    def send_new_subscription_notification(self, channel_title: str, channel_id: str) -> bool:
+    def send_new_subscription_notification(self, message: str) -> bool:
         """Send notification for a new subscription."""
-        message = f"🆕 *New subscription detected*\n*{channel_title}*\nhttps://www.youtube.com/channel/{channel_id}"
+        message = f"🆕 *New subscription detected*\n*{message}"
         return self.send_message(message)
 
     def send_video_summary_notification(self, new_videos: List[Video], filtered_count: int = 0) -> bool:
@@ -58,12 +58,12 @@ class TelegramService:
             return True
 
         video_count = len(new_videos)
-        
+
         if video_count > 0:
             message = f"📺 *{video_count} new video{'s' if video_count > 1 else ''} found!*"
         else:
             message = f"📺 *Daily Summary*"
-            
+
         if filtered_count > 0:
             message += f"\n🚫 _{filtered_count} short{'s' if filtered_count > 1 else ''}/non-standard video{'s' if filtered_count > 1 else ''} filtered out_"
 
